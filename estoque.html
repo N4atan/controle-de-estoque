@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Estoque - SENAC RS</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SheetJS for Excel Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        senacBlue: '#003366',
+                        senacBlueLight: '#004080',
+                        senacOrange: '#F26522',
+                        senacOrangeHover: '#d95318',
+                        senacBg: '#F4F6F9'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        
+        /* Regra rigorosa de Impressão: Esconde TUDO da página, exibindo estritamente a área do histórico */
+        @media print {
+            body * {
+                visibility: hidden !important;
+            }
+            #history-print-area, #history-print-area * {
+                visibility: visible !important;
+            }
+            #history-print-area {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 20px !important;
+                background: white !important;
+                box-shadow: none !important;
+                border: none !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-senacBg min-h-screen text-gray-800 flex flex-col justify-between">
+
+    <!-- Top Header -->
+    <header class="bg-senacBlue text-white shadow-md sticky top-0 z-50 no-print">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="bg-senacOrange text-white font-black text-xl px-3 py-1 rounded tracking-wider shadow">
+                    SENAC RS
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold leading-tight">Controle de Estoque Integrado</h1>
+                    <p class="text-xs text-blue-200">Gestão de Suprimentos por Unidade</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-4 mt-2 sm:mt-0">
+                <!-- School Switcher -->
+                <div class="flex items-center bg-blue-900/80 px-3 py-1.5 rounded-lg border border-blue-700">
+                    <span class="text-xs text-blue-200 mr-2 font-medium"><i class="fa-solid fa-school mr-1 text-senacOrange"></i> Unidade:</span>
+                    <select id="current-school" onchange="changeSchool()" class="bg-blue-950 text-white text-xs font-semibold px-2 py-1 rounded border border-blue-600 focus:outline-none focus:ring-1 focus:ring-senacOrange">
+                        <option value="Senac Centro">Senac Centro</option>
+                        <option value="Senac Unisinos">Senac Unisinos</option>
+                    </select>
+                </div>
+
+                <span class="text-xs bg-blue-900 px-3 py-1.5 rounded-lg border border-blue-700 hidden sm:inline-block">
+                    <i class="fa-solid fa-user mr-1 text-senacOrange"></i> Operadora: <strong id="current-user">Lilian</strong>
+                </span>
+
+                <!-- Status de Salvamento Automático -->
+                <div id="save-status-indicator" class="text-xs text-emerald-300 flex items-center gap-1 bg-blue-950 px-2.5 py-1 rounded border border-blue-800" title="Dados salvos automaticamente e seguros">
+                    <i class="fa-solid fa-cloud-arrow-up text-emerald-400"></i> <span id="save-status-text">Salvo Auto</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 py-6 w-full flex-grow space-y-6">
+        
+        <!-- Interactive Menu Bar / Navigation Cards -->
+        <div class="bg-white p-4 rounded-xl shadow-sm no-print space-y-4">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-gray-100 pb-4">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold uppercase text-gray-500"><i class="fa-solid fa-boxes-stacked text-senacBlue mr-1"></i> Painel de Estoque Atual</span>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+                    <button onclick="openModal('add')" class="bg-senacOrange hover:bg-senacOrangeHover text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow transition flex items-center gap-2">
+                        <i class="fa-solid fa-plus text-xs"></i> Novo Item
+                    </button>
+                    <button onclick="undoLastOperation()" class="bg-gray-600 hover:bg-gray-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow transition flex items-center gap-2" title="Desfazer última operação">
+                        <i class="fa-solid fa-rotate-left text-xs"></i> Desfazer
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filtros Rápidos Integrados no Menu -->
+            <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
+                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                    <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider mr-1"><i class="fa-solid fa-filter text-senacOrange mr-1"></i> Filtrar Categoria:</span>
+                    <div id="category-pills" class="flex flex-wrap gap-2">
+                        <button onclick="selectCategory('')" id="cat-pill-all" class="px-4 py-2.5 rounded-xl text-sm font-bold bg-senacBlue text-white transition shadow-sm">Todas</button>
+                        <button onclick="selectCategory('Material de Escritório')" id="cat-pill-escritorio" class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition">Escritório</button>
+                        <button onclick="selectCategory('Informática / TI')" id="cat-pill-ti" class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition">TI</button>
+                        <button onclick="selectCategory('Limpeza')" id="cat-pill-limpeza" class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition">Limpeza</button>
+                        <button onclick="selectCategory('Didático / Apostilas')" id="cat-pill-didatico" class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition">Didático</button>
+                        <button onclick="selectCategory('Ensino Médio')" id="cat-pill-ensino-medio" class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition">Ensino Médio</button>
+                        <button onclick="selectCategory('RH')" id="cat-pill-rh" class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition">RH</button>
+                        <button onclick="selectCategory('Manutenção')" id="cat-pill-manutencao" class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition">Manutenção</button>
+                    </div>
+                </div>
+
+                <!-- Campo de Busca Global sem restrição de categoria com Botão "Buscar" e Botão "Limpar" -->
+                <div class="flex items-center gap-1.5 w-full md:w-auto">
+                    <div class="relative flex-grow md:w-56">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+                            <i class="fa-solid fa-search text-xs"></i>
+                        </span>
+                        <input type="text" id="search-input" placeholder="Pesquisar em todas categorias..." onkeydown="handleSearchKeyDown(event)" 
+                            class="w-full pl-9 pr-3 py-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-senacBlue bg-gray-50">
+                    </div>
+                    <button onclick="executeGlobalSearch()" class="bg-senacBlue hover:bg-senacBlueLight text-white text-xs font-semibold px-3.5 py-2 rounded-lg shadow transition flex items-center gap-1" title="Executar busca global">
+                        <i class="fa-solid fa-magnifying-glass text-[10px]"></i> Buscar
+                    </button>
+                    <button onclick="clearSearch()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-semibold px-2.5 py-2 rounded-lg transition" title="Limpar busca">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION: INVENTORY -->
+        <div id="section-inventory" class="space-y-6 no-print">
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-senacBlue flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total de Itens</p>
+                        <h3 class="text-2xl font-bold text-gray-800 mt-1" id="stat-total">0</h3>
+                    </div>
+                    <div class="w-12 h-12 rounded-full bg-blue-50 text-senacBlue flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-boxes-stacked"></i>
+                    </div>
+                </div>
+                
+                <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-senacOrange flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Tipos de Suprimento</p>
+                        <h3 class="text-2xl font-bold text-gray-800 mt-1" id="stat-types">0</h3>
+                    </div>
+                    <div class="w-12 h-12 rounded-full bg-orange-50 text-senacOrange flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-tags"></i>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-emerald-500 flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Qtd. Total Unidades</p>
+                        <h3 class="text-2xl font-bold text-gray-800 mt-1" id="stat-quantity">0</h3>
+                    </div>
+                    <div class="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-cubes"></i>
+                    </div>
+                </div>
+
+                <div id="alert-card" class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-amber-500 flex items-center justify-between transition-all">
+                    <div>
+                        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider" id="alert-label">Alertas (Baixo Estoque)</p>
+                        <h3 class="text-2xl font-bold text-gray-800 mt-1" id="stat-alerts">0</h3>
+                        <p id="alert-message" class="text-[10px] font-bold text-amber-600 mt-0.5 hidden">⚠️ Nível Crítico (≤ 5 unidades)</p>
+                    </div>
+                    <div id="alert-icon-container" class="w-12 h-12 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center text-xl transition-all">
+                        <i id="alert-icon" class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Inventory Table Section -->
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+                    <h2 class="font-bold text-gray-800 text-base flex items-center gap-2">
+                        <i class="fa-solid fa-clipboard-list text-senacBlue"></i> Suprimentos - <span id="current-school-title">Senac Centro</span>
+                    </h2>
+                    <span class="text-xs text-gray-500" id="table-count">Mostrando 0 registros</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse" id="inventory-table">
+                        <thead>
+                            <tr class="bg-gray-50 text-gray-600 uppercase text-xs tracking-wider border-b border-gray-200">
+                                <th class="py-3 px-4 font-semibold">Identificação</th>
+                                <th class="py-3 px-4 font-semibold">Nome do Item</th>
+                                <th class="py-3 px-4 font-semibold">Tipo de Suprimento</th>
+                                <th class="py-3 px-4 font-semibold text-center">Quantidade</th>
+                                <th class="py-3 px-4 font-semibold">Última Atualização</th>
+                                <th class="py-3 px-4 font-semibold text-center">Movimentar</th>
+                                <th class="py-3 px-4 font-semibold text-center">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 text-sm" id="table-body">
+                            <!-- Dynamic rows -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="empty-state" class="hidden py-12 text-center">
+                    <div class="text-gray-300 text-4xl mb-3"><i class="fa-solid fa-box-open"></i></div>
+                    <p class="text-gray-500 font-medium">Nenhum item encontrado com os critérios de busca.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION: HISTORY -->
+        <div id="section-history-container" class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
+            <div onclick="toggleHistoryMenu()" class="px-6 py-4 bg-gray-50 hover:bg-gray-100 cursor-pointer flex justify-between items-center transition no-print">
+                <h2 class="font-bold text-gray-700 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-clock-rotate-left text-senacBlue"></i> Histórico de Movimentações (<span id="history-school-label">Senac Centro</span>) <span class="text-xs font-normal text-gray-500">(Clique para expandir/recolher)</span>
+                </h2>
+                <div class="flex items-center gap-2">
+                    <span id="history-badge-count" class="text-xs bg-gray-200 text-gray-700 font-semibold px-2 py-0.5 rounded-full">0 registros</span>
+                    <i id="history-toggle-icon" class="fa-solid fa-chevron-down text-gray-500 transition-transform"></i>
+                </div>
+            </div>
+
+            <div id="history-content" class="hidden p-6 space-y-4 border-t border-gray-100">
+                <div class="flex flex-wrap justify-between items-center gap-4 no-print">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <div class="flex items-center gap-1.5">
+                            <label class="text-xs font-semibold uppercase text-gray-500"><i class="fa-solid fa-calendar-days text-senacOrange mr-1"></i> Consulta Mensal:</label>
+                            <input type="month" id="filter-history-month" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-senacBlue font-medium">
+                        </div>
+                        <button onclick="clearHistoryFilters()" class="text-gray-500 hover:text-gray-700 text-xs px-2.5 py-1.5 rounded border border-gray-200 bg-gray-50" title="Limpar Filtro Mensal">Mostrar Tudo</button>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <button onclick="exportHistoryExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3.5 py-2 rounded-lg shadow transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-excel"></i> Exportar Excel
+                        </button>
+                        <button onclick="exportHistoryPDF()" class="bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium px-3.5 py-2 rounded-lg shadow transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-pdf"></i> Exportar PDF
+                        </button>
+                        <button onclick="clearAllHistory()" class="bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-medium px-3 py-2 rounded-lg border border-rose-200 transition flex items-center gap-1.5 ml-2" title="Limpar histórico desta unidade">
+                            <i class="fa-solid fa-trash-can"></i> Limpar Histórico
+                        </button>
+                    </div>
+                </div>
+
+                <div class="rounded-lg overflow-hidden border border-gray-100" id="history-print-area">
+                    <div class="p-4 bg-gray-50 border-b border-gray-200 hidden print:block">
+                        <h3 class="font-bold text-base text-gray-800">Relatório de Histórico de Movimentações - <span id="print-history-school">Senac Centro</span></h3>
+                        <p class="text-xs text-gray-500">Mês Selecionado: <span id="print-month-label">Todos / Atual</span> | Gerado em: <span id="print-date"></span></p>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse" id="history-table">
+                            <thead>
+                                <tr class="bg-gray-50 text-gray-600 uppercase text-xs tracking-wider border-b border-gray-200">
+                                    <th class="py-2.5 px-4 font-semibold">Data / Hora</th>
+                                    <th class="py-2.5 px-4 font-semibold">Unidade</th>
+                                    <th class="py-2.5 px-4 font-semibold">Operação</th>
+                                    <th class="py-2.5 px-4 font-semibold">Item</th>
+                                    <th class="py-2.5 px-4 font-semibold text-center">Quantidade</th>
+                                    <th class="py-2.5 px-4 font-semibold">Responsável</th>
+                                    <th class="py-2.5 px-4 font-semibold text-center no-print">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 text-sm" id="history-table-body">
+                                <!-- History rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="empty-history" class="hidden py-8 text-center">
+                        <div class="text-gray-300 text-3xl mb-2"><i class="fa-solid fa-folder-open"></i></div>
+                        <p class="text-gray-500 text-xs font-medium">Nenhum registro de movimentação encontrado para esta unidade no mês selecionado.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 mt-10 py-4 text-center text-xs text-gray-500 no-print">
+        <p>Senac RS - Serviço Nacional de Aprendizagem Comercial | Sistema de Controle de Estoque por Unidade &copy; 2026</p>
+    </footer>
+
+    <!-- Modal Form: Add/Edit Item -->
+    <div id="item-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden px-4 no-print">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden transform transition-all">
+            <div class="bg-senacBlue text-white px-6 py-4 flex justify-between items-center">
+                <h3 class="font-bold text-base flex items-center gap-2" id="modal-title">
+                    <i class="fa-solid fa-circle-plus"></i> Novo Suprimento
+                </h3>
+                <button onclick="closeModal('item')" class="text-blue-200 hover:text-white text-lg font-bold">&times;</button>
+            </div>
+            <form id="item-form" onsubmit="handleItemSubmit(event)" class="p-6 space-y-4">
+                <input type="hidden" id="item-edit-id">
+                <div>
+                    <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Nome do Item</label>
+                    <input type="text" id="item-name" required placeholder="Ex: Resma Papel A4" 
+                        class="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-senacBlue">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Tipo de Suprimento</label>
+                    <select id="item-type" required class="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-senacBlue bg-white">
+                        <option value="">Selecione a categoria...</option>
+                        <option value="Material de Escritório">Material de Escritório</option>
+                        <option value="Informática / TI">Informática / TI</option>
+                        <option value="Limpeza">Limpeza</option>
+                        <option value="Didático / Apostilas">Didático / Apostilas</option>
+                        <option value="Ensino Médio">Ensino Médio</option>
+                        <option value="RH">RH</option>
+                        <option value="Manutenção">Manutenção</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Quantidade Inicial</label>
+                        <input type="number" id="item-quantity" min="0" required placeholder="0" 
+                            class="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-senacBlue">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Data</label>
+                        <input type="date" id="item-date" required 
+                            class="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-senacBlue">
+                    </div>
+                </div>
+                <div class="pt-4 flex justify-end space-x-3 border-t border-gray-100">
+                    <button type="button" onclick="closeModal('item')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm px-4 py-2 rounded-lg transition">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="bg-senacOrange hover:bg-senacOrangeHover text-white font-medium text-sm px-5 py-2 rounded-lg shadow transition">
+                        Salvar Item
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Form: Movement -->
+    <div id="movement-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden px-4 no-print">
+        <div class="bg-white rounded-xl shadow-xl max-w-sm w-full overflow-hidden transform transition-all">
+            <div class="bg-senacBlue text-white px-6 py-4 flex justify-between items-center">
+                <h3 class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-arrows-up-down"></i> Movimentar Estoque
+                </h3>
+                <button onclick="closeModal('movement')" class="text-blue-200 hover:text-white text-lg font-bold">&times;</button>
+            </div>
+            <form onsubmit="handleMovementSubmit(event)" class="p-6 space-y-4">
+                <input type="hidden" id="mov-item-id">
+                <div>
+                    <p class="text-xs font-semibold text-gray-500 uppercase">Item Selecionado:</p>
+                    <p class="text-sm font-bold text-gray-800" id="mov-item-name">-</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Tipo de Movimentação</label>
+                    <select id="mov-type" required class="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-senacBlue bg-white">
+                        <option value="ENTRADA">Adicionar (Entrada de Estoque)</option>
+                        <option value="SAIDA">Retirar (Saída / Baixa no Estoque)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Quantidade</label>
+                    <input type="number" id="mov-qty" min="1" required placeholder="Ex: 5" 
+                        class="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-senacBlue">
+                </div>
+                <div class="pt-4 flex justify-end space-x-3 border-t border-gray-100">
+                    <button type="button" onclick="closeModal('movement')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm px-4 py-2 rounded-lg transition">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="bg-senacBlue hover:bg-senacBlueLight text-white font-medium text-sm px-5 py-2 rounded-lg shadow transition">
+                        Confirmar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        let currentSchool = 'Senac Centro';
+        const operatorName = 'Lilian';
+        let currentSelectedCategory = '';
+
+        let db = JSON.parse(localStorage.getItem('senac_multi_db')) || {
+            'Senac Centro': [
+                { id: 'CEN-001', name: 'Resma de Papel A4 75g', type: 'Material de Escritório', quantity: 50, date: '2026-03-01' },
+                { id: 'CEN-002', name: 'Toner HP LaserJet Original', type: 'Informática / TI', quantity: 4, date: '2026-03-02' },
+                { id: 'CEN-003', name: 'Água Sanitária 1L', type: 'Limpeza', quantity: 15, date: '2026-03-03' }
+            ],
+            'Senac Unisinos': [
+                { id: 'UNI-001', name: 'Apostila Técnico em Enfermagem', type: 'Didático / Apostilas', quantity: 40, date: '2026-03-01' },
+                { id: 'UNI-002', name: 'Projetor Multimídia LED', type: 'Informática / TI', quantity: 2, date: '2026-03-02' },
+                { id: 'UNI-003', name: 'Papel Toalha Interfolhado (Fardo)', type: 'Limpeza', quantity: 12, date: '2026-03-04' }
+            ]
+        };
+
+        let historyLogDb = JSON.parse(localStorage.getItem('senac_history_db')) || {
+            'Senac Centro': [],
+            'Senac Unisinos': []
+        };
+
+        let undoStack = JSON.parse(localStorage.getItem('senac_undo_stack')) || [];
+
+        function saveData() {
+            localStorage.setItem('senac_multi_db', JSON.stringify(db));
+            localStorage.setItem('senac_history_db', JSON.stringify(historyLogDb));
+            localStorage.setItem('senac_undo_stack', JSON.stringify(undoStack));
+        }
+
+        function recordAction(actionObj) {
+            undoStack.push(actionObj);
+            if (undoStack.length > 20) undoStack.shift();
+            saveData();
+        }
+
+        function toggleHistoryMenu() {
+            const content = document.getElementById('history-content');
+            const icon = document.getElementById('history-toggle-icon');
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                icon.className = "fa-solid fa-chevron-up text-gray-500 transition-transform";
+            } else {
+                content.classList.add('hidden');
+                icon.className = "fa-solid fa-chevron-down text-gray-500 transition-transform";
+            }
+        }
+
+        function undoLastOperation() {
+            if (undoStack.length === 0) {
+                alert('Nenhuma operação recente para desfazer.');
+                return;
+            }
+
+            const lastAction = undoStack.pop();
+
+            if (lastAction.type === 'ADD_ITEM') {
+                db[lastAction.school] = db[lastAction.school].filter(i => i.id !== lastAction.itemId);
+                if (historyLogDb[lastAction.school] && historyLogDb[lastAction.school].length > 0) {
+                    historyLogDb[lastAction.school].shift();
+                }
+            } else if (lastAction.type === 'DELETE_ITEM') {
+                if (!db[lastAction.school]) db[lastAction.school] = [];
+                db[lastAction.school].push(lastAction.itemData);
+            } else if (lastAction.type === 'MOVEMENT') {
+                const items = db[lastAction.school] || [];
+                const item = items.find(i => i.id === lastAction.itemId);
+                if (item) {
+                    if (lastAction.movType === 'ENTRADA') {
+                        item.quantity -= lastAction.qty;
+                    } else {
+                        item.quantity += lastAction.qty;
+                    }
+                }
+                if (historyLogDb[lastAction.school] && historyLogDb[lastAction.school].length > 0) {
+                    historyLogDb[lastAction.school].shift();
+                }
+            }
+
+            saveData();
+            renderTable();
+            renderHistory();
+            alert('Última operação desfeita com sucesso!');
+        }
+
+        function changeSchool() {
+            currentSchool = document.getElementById('current-school').value;
+            document.getElementById('current-school-title').innerText = currentSchool;
+            document.getElementById('history-school-label').innerText = currentSchool;
+            document.getElementById('print-history-school').innerText = currentSchool;
+            
+            document.getElementById('filter-history-month').value = '';
+
+            renderTable();
+            renderHistory();
+        }
+
+        function selectCategory(cat) {
+            currentSelectedCategory = cat;
+
+            const pills = {
+                '': 'cat-pill-all',
+                'Material de Escritório': 'cat-pill-escritorio',
+                'Informática / TI': 'cat-pill-ti',
+                'Limpeza': 'cat-pill-limpeza',
+                'Didático / Apostilas': 'cat-pill-didatico',
+                'Ensino Médio': 'cat-pill-ensino-medio',
+                'RH': 'cat-pill-rh',
+                'Manutenção': 'cat-pill-manutencao'
+            };
+
+            for (let key in pills) {
+                const btn = document.getElementById(pills[key]);
+                if (btn) {
+                    if (key === cat) {
+                        btn.className = "px-4 py-2.5 rounded-xl text-sm font-bold bg-senacBlue text-white transition shadow-sm";
+                    } else {
+                        btn.className = "px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition";
+                    }
+                }
+            }
+
+            renderTable();
+        }
+
+        function handleSearchKeyDown(event) {
+            if (event.key === 'Enter') {
+                executeGlobalSearch();
+            }
+        }
+
+        function executeGlobalSearch() {
+            // Limpa o filtro de categoria ao pesquisar para que a busca funcione globalmente em todas as categorias sem restrições
+            currentSelectedCategory = '';
+            
+            // Reseta visualmente as pílulas para "Todas"
+            const pills = {
+                '': 'cat-pill-all',
+                'Material de Escritório': 'cat-pill-escritorio',
+                'Informática / TI': 'cat-pill-ti',
+                'Limpeza': 'cat-pill-limpeza',
+                'Didático / Apostilas': 'cat-pill-didatico',
+                'Ensino Médio': 'cat-pill-ensino-medio',
+                'RH': 'cat-pill-rh',
+                'Manutenção': 'cat-pill-manutencao'
+            };
+
+            for (let key in pills) {
+                const btn = document.getElementById(pills[key]);
+                if (btn) {
+                    if (key === '') {
+                        btn.className = "px-4 py-2.5 rounded-xl text-sm font-bold bg-senacBlue text-white transition shadow-sm";
+                    } else {
+                        btn.className = "px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition";
+                    }
+                }
+            }
+
+            renderTable();
+        }
+
+        function clearSearch() {
+            const searchInputEl = document.getElementById('search-input');
+            if (searchInputEl) {
+                searchInputEl.value = '';
+            }
+            renderTable();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('table-body');
+            const emptyState = document.getElementById('empty-state');
+            const searchInputEl = document.getElementById('search-input');
+            const searchInput = searchInputEl ? searchInputEl.value.toLowerCase().trim() : '';
+
+            tbody.innerHTML = '';
+            const items = db[currentSchool] || [];
+
+            const filtered = items.filter(item => {
+                const itemName = item.name ? item.name.toLowerCase() : '';
+                const itemId = item.id ? item.id.toLowerCase() : '';
+                const itemType = item.type ? item.type.toLowerCase() : '';
+                
+                // Se houver texto digitado na pesquisa, ignora a restrição de categoria atual e busca globalmente
+                const matchesSearch = itemName.includes(searchInput) || itemId.includes(searchInput) || itemType.includes(searchInput);
+                const matchesType = searchInput !== '' ? true : (currentSelectedCategory === '' || item.type === currentSelectedCategory);
+                
+                return matchesSearch && matchesType;
+            });
+
+            if (filtered.length === 0) {
+                emptyState.classList.remove('hidden');
+                document.getElementById('table-count').innerText = 'Mostrando 0 registros';
+            } else {
+                emptyState.classList.add('hidden');
+                document.getElementById('table-count').innerText = `Mostrando ${filtered.length} de ${items.length} registro(s)`;
+
+                filtered.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-blue-50/40 transition duration-150 border-b border-gray-100';
+                    
+                    const isLowStock = item.quantity <= 5;
+                    const badgeClass = isLowStock ? 'bg-rose-100 text-rose-800 border border-rose-300' : 'bg-blue-50 text-senacBlue border border-blue-100';
+                    const alertIcon = isLowStock ? '<i class="fa-solid fa-triangle-exclamation text-rose-600 mr-1" title="Estoque Crítico!"></i>' : '';
+                    const formattedDate = item.date ? item.date.split('-').reverse().join('/') : '-';
+
+                    tr.innerHTML = `
+                        <td class="py-3 px-4 font-mono text-xs font-semibold text-gray-600">${item.id}</td>
+                        <td class="py-3 px-4 font-medium text-gray-800">${item.name}</td>
+                        <td class="py-3 px-4"><span class="px-2.5 py-1 text-xs rounded-full font-medium ${badgeClass}">${item.type}</span></td>
+                        <td class="py-3 px-4 text-center font-bold text-gray-700">${alertIcon} ${item.quantity}</td>
+                        <td class="py-3 px-4 text-gray-600 text-xs">${formattedDate}</td>
+                        <td class="py-3 px-4 text-center">
+                            <button onclick="openMovementModal('${item.id}')" class="bg-senacBlue hover:bg-senacBlueLight text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow transition inline-flex items-center gap-1.5" title="Movimentar quantidade">
+                                <i class="fa-solid fa-arrows-up-down"></i> Movimentar
+                            </button>
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            <button onclick="deleteItem('${item.id}')" class="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 p-2 rounded-lg transition" title="Excluir Item">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            updateStats();
+        }
+
+        function updateStats() {
+            const items = db[currentSchool] || [];
+            document.getElementById('stat-total').innerText = items.length;
+            
+            const uniqueTypes = new Set(items.map(i => i.type));
+            document.getElementById('stat-types').innerText = uniqueTypes.size;
+
+            const searchInputEl = document.getElementById('search-input');
+            const searchInput = searchInputEl ? searchInputEl.value.toLowerCase().trim() : '';
+
+            let itemsToSum = items;
+            if (searchInput === '') {
+                itemsToSum = currentSelectedCategory === '' ? items : items.filter(i => i.type === currentSelectedCategory);
+            }
+
+            const totalQty = itemsToSum.reduce((acc, curr) => acc + Number(curr.quantity), 0);
+            document.getElementById('stat-quantity').innerText = totalQty;
+
+            const lowStockCount = items.filter(i => i.quantity <= 5).length;
+            document.getElementById('stat-alerts').innerText = lowStockCount;
+
+            const alertCard = document.getElementById('alert-card');
+            const alertIconContainer = document.getElementById('alert-icon-container');
+            const alertIcon = document.getElementById('alert-icon');
+            const alertMessage = document.getElementById('alert-message');
+            const alertLabel = document.getElementById('alert-label');
+
+            if (lowStockCount > 0) {
+                alertCard.className = "bg-rose-50 p-5 rounded-xl shadow-md border-l-4 border-rose-600 flex items-center justify-between transition-all ring-1 ring-rose-200 animate-pulse";
+                alertIconContainer.className = "w-12 h-12 rounded-full bg-rose-600 text-white flex items-center justify-center text-xl shadow-md transition-all";
+                alertIcon.className = "fa-solid fa-triangle-exclamation text-white";
+                alertLabel.className = "text-xs font-bold text-rose-700 uppercase tracking-wider";
+                alertMessage.classList.remove('hidden');
+                alertMessage.innerText = `🚨 EMERGÊNCIA: ${lowStockCount} item(ns) ≤ 5 unidades!`;
+            } else {
+                alertCard.className = "bg-white p-5 rounded-xl shadow-sm border-l-4 border-emerald-500 flex items-center justify-between transition-all";
+                alertIconContainer.className = "w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl transition-all";
+                alertIcon.className = "fa-solid fa-circle-check";
+                alertLabel.className = "text-xs font-semibold text-gray-500 uppercase tracking-wider";
+                alertMessage.classList.add('hidden');
+            }
+        }
+
+        function clearHistoryFilters() {
+            document.getElementById('filter-history-month').value = '';
+            renderHistory();
+        }
+
+        function getFilteredHistory() {
+            const filterMonthInput = document.getElementById('filter-history-month').value;
+            const currentSchoolHistory = historyLogDb[currentSchool] || [];
+
+            return currentSchoolHistory.filter(h => {
+                if (filterMonthInput) {
+                    if (!h.dateRaw) return false;
+                    const itemMonth = h.dateRaw.substring(0, 7);
+                    return itemMonth === filterMonthInput;
+                }
+                return true;
+            });
+        }
+
+        function renderHistory() {
+            const tbody = document.getElementById('history-table-body');
+            const emptyHistory = document.getElementById('empty-history');
+            const filterMonthInput = document.getElementById('filter-history-month').value;
+
+            tbody.innerHTML = '';
+            const filtered = getFilteredHistory();
+
+            document.getElementById('history-badge-count').innerText = `${filtered.length} registro(s)`;
+            document.getElementById('print-month-label').innerText = filterMonthInput ? filterMonthInput.split('-').reverse().join('/') : 'Todos (Sem filtro mensal)';
+
+            if (filtered.length === 0) {
+                emptyHistory.classList.remove('hidden');
+            } else {
+                emptyHistory.classList.add('hidden');
+                filtered.forEach((h, index) => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-gray-50 transition border-b border-gray-100';
+
+                    let typeBadge = '';
+                    if (h.type === 'CADASTRAR' || h.type === 'ENTRADA') {
+                        typeBadge = '<span class="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-1 rounded-full font-semibold"><i class="fa-solid fa-plus mr-1"></i>' + h.type + '</span>';
+                    } else if (h.type === 'SAIDA') {
+                        typeBadge = '<span class="bg-rose-100 text-rose-800 text-xs px-2.5 py-1 rounded-full font-semibold"><i class="fa-solid fa-minus mr-1"></i>SAÍDA</span>';
+                    } else {
+                        typeBadge = '<span class="bg-blue-100 text-blue-800 text-xs px-2.5 py-1 rounded-full font-semibold">' + h.type + '</span>';
+                    }
+
+                    tr.innerHTML = `
+                        <td class="py-2.5 px-4 font-mono text-xs text-gray-600">${h.datetime}</td>
+                        <td class="py-2.5 px-4 text-xs font-semibold text-senacBlue">${h.school}</td>
+                        <td class="py-2.5 px-4">${typeBadge}</td>
+                        <td class="py-2.5 px-4 font-medium text-gray-800">${h.name}</td>
+                        <td class="py-2.5 px-4 text-center font-bold text-gray-700">${h.qty}</td>
+                        <td class="py-2.5 px-4 text-xs text-gray-600"><i class="fa-solid fa-user mr-1 text-senacOrange"></i>${h.user}</td>
+                        <td class="py-2.5 px-4 text-center no-print">
+                            <button onclick="deleteHistoryItem(${index})" class="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 p-1.5 rounded transition" title="Excluir este registro">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+        }
+
+        function deleteHistoryItem(index) {
+            if (!confirm('Deseja realmente excluir este registro do histórico desta unidade?')) return;
+            if (historyLogDb[currentSchool]) {
+                historyLogDb[currentSchool].splice(index, 1);
+                saveData();
+                renderHistory();
+            }
+        }
+
+        function clearAllHistory() {
+            if (!confirm(`Deseja realmente limpar todo o histórico de movimentações da unidade ${currentSchool}?`)) return;
+            historyLogDb[currentSchool] = [];
+            saveData();
+            renderHistory();
+        }
+
+        function openModal(mode) {
+            document.getElementById('item-modal').classList.remove('hidden');
+            document.getElementById('item-date').valueAsDate = new Date();
+        }
+
+        function closeModal(type) {
+            if (type === 'item') {
+                document.getElementById('item-modal').classList.add('hidden');
+                document.getElementById('item-form').reset();
+            } else {
+                document.getElementById('movement-modal').classList.add('hidden');
+            }
+        }
+
+        function handleItemSubmit(event) {
+            event.preventDefault();
+            const name = document.getElementById('item-name').value;
+            const type = document.getElementById('item-type').value;
+            const quantity = Number(document.getElementById('item-quantity').value);
+            const date = document.getElementById('item-date').value;
+
+            const prefix = currentSchool === 'Senac Centro' ? 'CEN' : 'UNI';
+            const count = (db[currentSchool] || []).length + 1;
+            const id = `${prefix}-${String(count).padStart(3, '0')}`;
+
+            const newItem = { id, name, type, quantity, date };
+            if (!db[currentSchool]) db[currentSchool] = [];
+            db[currentSchool].push(newItem);
+
+            const now = new Date();
+            const datetime = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth()+1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            
+            if (!historyLogDb[currentSchool]) historyLogDb[currentSchool] = [];
+            historyLogDb[currentSchool].unshift({
+                datetime,
+                dateRaw: date,
+                school: currentSchool,
+                type: 'CADASTRAR',
+                name,
+                qty: quantity,
+                user: operatorName
+            });
+
+            recordAction({
+                type: 'ADD_ITEM',
+                school: currentSchool,
+                itemId: id
+            });
+
+            closeModal('item');
+            renderTable();
+            renderHistory();
+        }
+
+        function openMovementModal(itemId) {
+            const item = (db[currentSchool] || []).find(i => i.id === itemId);
+            if (!item) return;
+
+            document.getElementById('mov-item-id').value = item.id;
+            document.getElementById('mov-item-name').innerText = `${item.id} - ${item.name} (Atual: ${item.quantity})`;
+            document.getElementById('movement-modal').classList.remove('hidden');
+        }
+
+        function handleMovementSubmit(event) {
+            event.preventDefault();
+            const itemId = document.getElementById('mov-item-id').value;
+            const movType = document.getElementById('mov-type').value;
+            const qty = Number(document.getElementById('mov-qty').value);
+
+            const items = db[currentSchool] || [];
+            const item = items.find(i => i.id === itemId);
+            if (!item) return;
+
+            if (movType === 'SAIDA' && item.quantity < qty) {
+                alert('Quantidade insuficiente em estoque para esta saída!');
+                return;
+            }
+
+            if (movType === 'ENTRADA') {
+                item.quantity += qty;
+            } else {
+                item.quantity -= qty;
+            }
+
+            const now = new Date();
+            const datetime = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth()+1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            const dateRaw = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            
+            if (!historyLogDb[currentSchool]) historyLogDb[currentSchool] = [];
+            historyLogDb[currentSchool].unshift({
+                datetime,
+                dateRaw,
+                school: currentSchool,
+                type: movType,
+                name: item.name,
+                qty,
+                user: operatorName
+            });
+
+            recordAction({
+                type: 'MOVEMENT',
+                school: currentSchool,
+                itemId,
+                movType,
+                qty
+            });
+
+            closeModal('movement');
+            renderTable();
+            renderHistory();
+        }
+
+        function deleteItem(itemId) {
+            if (!confirm('Deseja realmente excluir este item?')) return;
+            const items = db[currentSchool] || [];
+            const index = items.findIndex(i => i.id === itemId);
+            if (index !== -1) {
+                const deletedItem = items[index];
+                items.splice(index, 1);
+
+                recordAction({
+                    type: 'DELETE_ITEM',
+                    school: currentSchool,
+                    itemData: deletedItem
+                });
+
+                renderTable();
+            }
+        }
+
+        function exportHistoryExcel() {
+            const filteredData = getFilteredHistory();
+            if (filteredData.length === 0) {
+                alert('Não há registros no histórico para exportar com o filtro atual.');
+                return;
+            }
+            
+            const cleanData = filteredData.map(h => ({
+                'Data / Hora': h.datetime,
+                'Unidade': h.school,
+                'Operação': h.type,
+                'Nome do Item': h.name,
+                'Quantidade': h.qty,
+                'Responsável': h.user
+            }));
+
+            const worksheet = XLSX.utils.json_to_sheet(cleanData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Historico");
+            XLSX.writeFile(workbook, `Historico_Movimentacoes_${currentSchool.replace(/\s+/g, '_')}.xlsx`);
+        }
+
+        function exportHistoryPDF() {
+            const filteredData = getFilteredHistory();
+            if (filteredData.length === 0) {
+                alert('Não há registros no histórico para exportar em PDF com o filtro atual.');
+                return;
+            }
+            document.getElementById('print-date').innerText = new Date().toLocaleDateString('pt-BR');
+            document.getElementById('history-content').classList.remove('hidden');
+            window.print();
+        }
+
+        window.onload = function() {
+            document.getElementById('print-history-school').innerText = currentSchool;
+            renderTable();
+            renderHistory();
+        }
+    </script>
+</body>
+</html>
