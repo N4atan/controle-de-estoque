@@ -1,30 +1,33 @@
 import React from 'react';
-import { Flame, LogOut } from 'lucide-react';
+import { Flame, Database, UserCheck, RefreshCw, Zap } from 'lucide-react';
+import type { SupabaseStatusResponse } from '../services/api';
+import type { User as UserType } from '../services/auth';
 
 interface HeaderProps {
-  userEmail?: string;
-  operatorName?: string;
+  currentUser?: UserType | null;
   onLogout?: () => void;
+  dbStatus?: SupabaseStatusResponse | null;
+  onOpenDbSettings?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  userEmail = 'ngwildner@senacrs.com.br',
+  currentUser,
   onLogout,
+  dbStatus,
+  onOpenDbSettings,
 }) => {
-  const initial = userEmail ? userEmail.charAt(0).toUpperCase() : 'N';
+  const displayEmail = currentUser?.email || 'operador@terreira.com';
+  const displayName = currentUser?.name || 'Responsável';
+  const initial = displayName.charAt(0).toUpperCase();
 
   const handleLogout = () => {
     if (onLogout) {
       onLogout();
-    } else {
-      if (window.confirm('Deseja realmente sair do sistema?')) {
-        alert('Sessão encerrada com sucesso.');
-      }
     }
   };
 
   return (
-    <header className="navbar bg-base-100/90 backdrop-blur-md border-b border-base-300 sticky top-0 z-50 px-4 sm:px-6 lg:px-8 transition-all shadow-xs no-print">
+    <header className="navbar bg-base-100/90 backdrop-blur-md border-b border-base-300 sticky top-0 z-50 px-4 sm:px-6 lg:px-8 transition-all shadow-xs no-print flex items-center justify-between">
       <div className="flex-1 flex items-center gap-3">
         <div className="avatar placeholder">
           <div className="bg-primary text-primary-content rounded-xl w-10 h-10 shadow-sm flex items-center justify-center">
@@ -35,45 +38,78 @@ export const Header: React.FC<HeaderProps> = ({
           <h1 className="text-base sm:text-lg font-bold tracking-tight text-base-content leading-none">
             Controle de Estoque da Terreira
           </h1>
+          {currentUser && (
+            <p className="text-[11px] text-base-content/60 font-medium flex items-center gap-1 mt-0.5">
+              <UserCheck className="w-3 h-3 text-emerald-500" /> Operador: <strong className="text-base-content">{displayName}</strong>
+            </p>
+          )}
         </div>
       </div>
 
-      <div className="flex-none">
+      <div className="flex items-center gap-3">
+        {/* Supabase Realtime Database Status Badge */}
+        <button
+          onClick={onOpenDbSettings}
+          className={`btn btn-xs sm:btn-sm gap-1.5 rounded-lg border font-medium transition-all ${
+            dbStatus?.connected
+              ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20'
+              : 'bg-amber-500/10 text-amber-600 border-amber-500/30 hover:bg-amber-500/20'
+          }`}
+          title="Clique para ver o status da conexão Supabase Realtime"
+        >
+          <Zap className={`w-3.5 h-3.5 ${dbStatus?.connected ? 'text-emerald-500 fill-emerald-500' : 'text-amber-500'}`} />
+          <span className="hidden sm:inline">
+            {dbStatus?.connected ? 'Supabase Realtime' : 'Supabase Offline'}
+          </span>
+          <span className={`w-2 h-2 rounded-full ${dbStatus?.connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+        </button>
+
         {/* User Profile Avatar Dropdown */}
         <div className="dropdown dropdown-end">
           <div
             tabIndex={0}
             role="button"
-            className="w-9 h-9 rounded-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold text-sm flex items-center justify-center transition-colors cursor-pointer select-none shadow-xs"
-            title={userEmail}
+            className="w-9 h-9 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center transition-colors cursor-pointer select-none shadow-md border-2 border-emerald-400/30"
+            title={`${displayName} (${displayEmail})`}
           >
             {initial}
           </div>
 
           <div
             tabIndex={0}
-            className="dropdown-content z-50 menu p-3 shadow-xl bg-white rounded-xl w-60 border border-gray-200 mt-2 space-y-2 text-base-content"
+            className="dropdown-content z-50 menu p-3 shadow-xl bg-white rounded-xl w-64 border border-gray-200 mt-2 space-y-2 text-base-content"
           >
-            {/* Email */}
-            <div className="px-2 py-1 text-xs font-medium text-gray-700 truncate select-all">
-              {userEmail}
+            {/* User Details */}
+            <div className="px-2 py-1">
+              <p className="text-xs font-bold text-gray-900">{displayName}</p>
+              <p className="text-[11px] text-gray-500 truncate">{displayEmail}</p>
             </div>
 
             {/* Divider */}
             <div className="h-px bg-gray-200 w-full"></div>
 
-            {/* Sair */}
+            {/* Banco de dados */}
+            <button
+              type="button"
+              onClick={onOpenDbSettings}
+              className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-100 rounded-lg transition-colors font-medium text-left cursor-pointer"
+            >
+              <Database className="w-4 h-4 text-emerald-600" />
+              <span>Configurar Neon PostgreSQL</span>
+            </button>
+
+            {/* Alternar Operador / Logout */}
             <button
               type="button"
               onClick={handleLogout}
               className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-gray-700 hover:text-error hover:bg-gray-100 rounded-lg transition-colors font-medium text-left cursor-pointer"
             >
-              <LogOut className="w-4 h-4 text-gray-600" />
-              <span>Sair</span>
+              <RefreshCw className="w-4 h-4 text-gray-600" />
+              <span>Alternar Operador / Sair</span>
             </button>
           </div>
         </div>
       </div>
     </header>
   );
-};
+};

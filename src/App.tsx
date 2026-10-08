@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Header } from './components/Header';
 import { StatsCards } from './components/StatsCards';
 import { FilterBar } from './components/FilterBar';
@@ -7,59 +7,29 @@ import { HistorySection } from './components/HistorySection';
 import { ItemModal } from './components/ItemModal';
 import { MovementModal } from './components/MovementModal';
 import { CategoryModal } from './components/CategoryModal';
+import { DbSettingsModal } from './components/DbSettingsModal';
+import { LoginForm } from './components/LoginForm';
 
-import type { StockItem, HistoryEntry, UndoAction } from './types/stock';
+import type { StockItem, HistoryEntry } from './types/stock';
 import { INITIAL_STOCK, INITIAL_HISTORY, CATEGORIES } from './data/initialData';
-
-const STORAGE_KEYS = {
-  ITEMS: 'terreira_estoque_items',
-  HISTORY: 'terreira_estoque_history',
-  UNDO: 'terreira_estoque_undo',
-  CATEGORIES: 'terreira_estoque_categories',
-};
+import { api, type SupabaseStatusResponse } from './services/api';
+import { authService, type User } from './services/auth';
+import { supabase } from './services/supabase';
 
 function App() {
-  const [operatorName] = useState<string>('Responsável do Terreiro');
+  const [currentUser, setCurrentUser] = useState<User | null>(() => authService.getCurrentUser());
+  const operatorName = currentUser?.name || 'Responsável do Terreiro';
 
-  // Categories State
-  const [categories, setCategories] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
-      return saved ? JSON.parse(saved) : CATEGORIES;
-    } catch {
-      return CATEGORIES;
-    }
-  });
+  // Database Connection Status
+  const [dbStatus, setDbStatus] = useState<SupabaseStatusResponse | null>(null);
+  const [isDbSettingsOpen, setIsDbSettingsOpen] = useState<boolean>(false);
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
 
-  // Items State
-  const [items, setItems] = useState<StockItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.ITEMS);
-      return saved ? JSON.parse(saved) : INITIAL_STOCK;
-    } catch {
-      return INITIAL_STOCK;
-    }
-  });
-
-  // History Log State
-  const [history, setHistory] = useState<HistoryEntry[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.HISTORY);
-      return saved ? JSON.parse(saved) : INITIAL_HISTORY;
-    } catch {
-      return INITIAL_HISTORY;
-    }
-  });
-
-  // Undo Stack State
-  const [undoStack, setUndoStack] = useState<UndoAction[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.UNDO);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  // App States
+  const [categories, setCategories] = useState<string[]>(CATEGORIES);
+  const [items, setItems] = useState<StockItem[]>(INITIAL_STOCK);
+  const [history, setHistory] = useState<HistoryEntry[]>(INITIAL_HISTORY);
+  const [canUndo, setCanUndo] = useState<boolean>(false);
 
   // Filters
   const [selectedCategory, setSelectedCategory] = useState<string>('');
@@ -71,23 +41,80 @@ function App() {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState<boolean>(false);
   const [selectedItemForMovement, setSelectedItemForMovement] = useState<StockItem | null>(null);
 
-  // Sync with LocalStorage
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(categories));
-  }, [categories]);
+  // Check Database Status & Fetch Data
+  const loadAppData = useCallback(async () => {
+    try {
+      setIsLoadingData(true);
+      const status = await api.getStatus();
+      setDbStatus(status);
 
-  // Sync with LocalStorage
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.ITEMS, JSON.stringify(items));
-  }, [items]);
+      if (status.connected) {
+        // Fetch from Supabase
+        const [cats, stockItems, historyLogs] = await Promise.all([
+          api.getCategories().catch(() => CATEGORIES),
+          api.getItems().catch(() => INITIAL_STOCK),
+          api.getHistory().catch(() => INITIAL_HISTORY),
+        ]);
+
+        if (cats && cats.length > 0) setCategories(cats);
+        if (stockItems && stockItems.length > 0) setItems(stockItems);
+        if (historyLogs) setHistory(historyLogs);
+        setCanUndo(true);
+      } else {
+        // LocalStorage Fallback if Database not connected
+        const savedCats = localStorage.getItem('terreira_estoque_categories');
+        const savedItems = localStorage.getItem('terreira_estoque_items');
+        const savedHist = localStorage.getItem('terreira_estoque_history');
+
+        if (savedCats) setCategories(JSON.parse(savedCats));
+        if (savedItems) setItems(JSON.parse(savedItems));
+        if (savedHist) setHistory(JSON.parse(savedHist));
+      }
+    } catch (error) {
+      console.error('Erro ao carregar dados do app:', error);
+    } finally {
+      setIsLoadingData(false);
+    }
+  }, []);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history));
-  }, [history]);
+    loadAppData();
+  }, [loadAppData]);
 
+  // ⚡ Supabase Realtime Subscription Listener ⚡
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.UNDO, JSON.stringify(undoStack));
-  }, [undoStack]);
+    if (!dbStatus?.connected) return;
+
+    console.log('⚡ Conectando ao canal Supabase Realtime...');
+    const channel = supabase
+      .channel('realtime-stock')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, () => {
+        console.log('⚡ Alteração em items detectada via Realtime!');
+        api.getItems().then(setItems).catch(console.error);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'history' }, () => {
+        console.log('⚡ Alteração em history detectada via Realtime!');
+        api.getHistory().then(setHistory).catch(console.error);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => {
+        console.log('⚡ Alteração em categories detectada via Realtime!');
+        api.getCategories().then(setCategories).catch(console.error);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [dbStatus?.connected]);
+
+  // Sync to LocalStorage when offline
+  useEffect(() => {
+    if (!dbStatus?.connected) {
+      localStorage.setItem('terreira_estoque_categories', JSON.stringify(categories));
+      localStorage.setItem('terreira_estoque_items', JSON.stringify(items));
+      localStorage.setItem('terreira_estoque_history', JSON.stringify(history));
+    }
+  }, [categories, items, history, dbStatus]);
 
   // Filtered items logic
   const filteredItems = items.filter((item) => {
@@ -105,65 +132,60 @@ function App() {
     return true;
   });
 
-  // Helper to record undoable actions
-  const pushUndoAction = (action: UndoAction) => {
-    setUndoStack((prev) => {
-      const updated = [...prev, action];
-      if (updated.length > 20) updated.shift();
-      return updated;
-    });
-  };
-
   // Add Item
-  const handleAddItem = (itemData: {
+  const handleAddItem = async (itemData: {
     name: string;
     type: string;
     quantity: number;
     date: string;
   }) => {
-    const count = items.length + 1;
-    const id = `ITEM-${String(count).padStart(3, '0')}`;
+    if (dbStatus?.connected) {
+      try {
+        const newItem = await api.addItem({ ...itemData, user: operatorName });
+        setItems((prev) => [...prev, newItem]);
+        const updatedHistory = await api.getHistory();
+        setHistory(updatedHistory);
+        setIsItemModalOpen(false);
+      } catch (err: any) {
+        alert(err.message || 'Erro ao cadastrar item no Supabase.');
+      }
+    } else {
+      // Local fallback
+      const count = items.length + 1;
+      const id = `ITEM-${String(count).padStart(3, '0')}`;
+      const newItem: StockItem = {
+        id,
+        name: itemData.name,
+        type: itemData.type,
+        quantity: itemData.quantity,
+        date: itemData.date,
+      };
 
-    const newItem: StockItem = {
-      id,
-      name: itemData.name,
-      type: itemData.type,
-      quantity: itemData.quantity,
-      date: itemData.date,
-    };
+      setItems((prev) => [...prev, newItem]);
+      const now = new Date();
+      const datetime = `${String(now.getDate()).padStart(2, '0')}/${String(
+        now.getMonth() + 1
+      ).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(
+        now.getMinutes()
+      ).padStart(2, '0')}`;
 
-    setItems((prev) => [...prev, newItem]);
+      const newHistoryEntry: HistoryEntry = {
+        id: `h-${Date.now()}`,
+        datetime,
+        dateRaw: itemData.date,
+        type: 'CADASTRAR',
+        name: newItem.name,
+        qty: newItem.quantity,
+        user: operatorName,
+      };
 
-    const now = new Date();
-    const datetime = `${String(now.getDate()).padStart(2, '0')}/${String(
-      now.getMonth() + 1
-    ).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(
-      2,
-      '0'
-    )}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-    const newHistoryEntry: HistoryEntry = {
-      id: `h-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      datetime,
-      dateRaw: itemData.date,
-      type: 'CADASTRAR',
-      name: newItem.name,
-      qty: newItem.quantity,
-      user: operatorName,
-    };
-
-    setHistory((prev) => [newHistoryEntry, ...prev]);
-
-    pushUndoAction({
-      type: 'ADD_ITEM',
-      itemId: id,
-    });
-
-    setIsItemModalOpen(false);
+      setHistory((prev) => [newHistoryEntry, ...prev]);
+      setIsItemModalOpen(false);
+    }
   };
 
   // Stock Movement (Entrada / Saída)
-  const handleMovement = (
+  const handleMovement = async (
     itemId: string,
     movType: 'ENTRADA' | 'SAIDA',
     qty: number
@@ -176,53 +198,58 @@ function App() {
       return;
     }
 
-    setItems((prev) =>
-      prev.map((i) => {
-        if (i.id === itemId) {
-          const newQty = movType === 'ENTRADA' ? i.quantity + qty : i.quantity - qty;
-          return { ...i, quantity: newQty };
-        }
-        return i;
-      })
-    );
+    if (dbStatus?.connected) {
+      try {
+        const result = await api.moveStock(itemId, movType, qty, operatorName);
+        setItems((prev) =>
+          prev.map((i) => (i.id === itemId ? { ...i, quantity: result.newQuantity } : i))
+        );
+        const updatedHistory = await api.getHistory();
+        setHistory(updatedHistory);
+        setIsMovementModalOpen(false);
+        setSelectedItemForMovement(null);
+      } catch (err: any) {
+        alert(err.message || 'Erro ao registrar movimentação.');
+      }
+    } else {
+      setItems((prev) =>
+        prev.map((i) => {
+          if (i.id === itemId) {
+            const newQty = movType === 'ENTRADA' ? i.quantity + qty : i.quantity - qty;
+            return { ...i, quantity: newQty };
+          }
+          return i;
+        })
+      );
 
-    const now = new Date();
-    const datetime = `${String(now.getDate()).padStart(2, '0')}/${String(
-      now.getMonth() + 1
-    ).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(
-      2,
-      '0'
-    )}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const dateRaw = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-      2,
-      '0'
-    )}-${String(now.getDate()).padStart(2, '0')}`;
+      const now = new Date();
+      const datetime = `${String(now.getDate()).padStart(2, '0')}/${String(
+        now.getMonth() + 1
+      ).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(
+        now.getMinutes()
+      ).padStart(2, '0')}`;
+      const dateRaw = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+        now.getDate()
+      ).padStart(2, '0')}`;
 
-    const newHistoryEntry: HistoryEntry = {
-      id: `h-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      datetime,
-      dateRaw,
-      type: movType,
-      name: item.name,
-      qty,
-      user: operatorName,
-    };
+      const newHistoryEntry: HistoryEntry = {
+        id: `h-${Date.now()}`,
+        datetime,
+        dateRaw,
+        type: movType,
+        name: item.name,
+        qty,
+        user: operatorName,
+      };
 
-    setHistory((prev) => [newHistoryEntry, ...prev]);
-
-    pushUndoAction({
-      type: 'MOVEMENT',
-      itemId,
-      movType,
-      qty,
-    });
-
-    setIsMovementModalOpen(false);
-    setSelectedItemForMovement(null);
+      setHistory((prev) => [newHistoryEntry, ...prev]);
+      setIsMovementModalOpen(false);
+      setSelectedItemForMovement(null);
+    }
   };
 
   // Delete Item
-  const handleDeleteItem = (itemId: string) => {
+  const handleDeleteItem = async (itemId: string) => {
     const itemToDelete = items.find((i) => i.id === itemId);
     if (!itemToDelete) return;
 
@@ -234,89 +261,132 @@ function App() {
       return;
     }
 
-    setItems((prev) => prev.filter((i) => i.id !== itemId));
-
-    pushUndoAction({
-      type: 'DELETE_ITEM',
-      itemData: itemToDelete,
-    });
+    if (dbStatus?.connected) {
+      try {
+        await api.deleteItem(itemId);
+        setItems((prev) => prev.filter((i) => i.id !== itemId));
+      } catch (err: any) {
+        alert(err.message || 'Erro ao excluir item.');
+      }
+    } else {
+      setItems((prev) => prev.filter((i) => i.id !== itemId));
+    }
   };
 
   // Undo Last Action
-  const handleUndo = () => {
-    if (undoStack.length === 0) {
-      alert('Nenhuma operação recente para desfazer.');
-      return;
+  const handleUndo = async () => {
+    if (dbStatus?.connected) {
+      try {
+        const res = await api.undo();
+        alert(res.message);
+        loadAppData();
+      } catch (err: any) {
+        alert(err.message || 'Nenhuma operação recente para desfazer.');
+      }
+    } else {
+      alert('Recurso de desfazer via banco necessita de conexão Supabase ativa.');
     }
-
-    const newStack = [...undoStack];
-    const lastAction = newStack.pop();
-    if (!lastAction) return;
-
-    setUndoStack(newStack);
-
-    if (lastAction.type === 'ADD_ITEM') {
-      setItems((prev) => prev.filter((i) => i.id !== lastAction.itemId));
-      setHistory((prev) => prev.slice(1));
-    } else if (lastAction.type === 'DELETE_ITEM') {
-      setItems((prev) => [...prev, lastAction.itemData]);
-    } else if (lastAction.type === 'MOVEMENT') {
-      setItems((prev) =>
-        prev.map((i) => {
-          if (i.id === lastAction.itemId) {
-            const revertedQty =
-              lastAction.movType === 'ENTRADA'
-                ? i.quantity - lastAction.qty
-                : i.quantity + lastAction.qty;
-            return { ...i, quantity: revertedQty };
-          }
-          return i;
-        })
-      );
-      setHistory((prev) => prev.slice(1));
-    }
-
-    alert('Última operação desfeita com sucesso!');
   };
 
   // Delete single history log
-  const handleDeleteHistoryItem = (historyId: string) => {
+  const handleDeleteHistoryItem = async (historyId: string) => {
     if (!window.confirm('Deseja realmente excluir este registro do histórico?')) {
       return;
     }
-    setHistory((prev) => prev.filter((h) => h.id !== historyId));
+    if (dbStatus?.connected) {
+      try {
+        await api.deleteHistoryItem(historyId);
+        setHistory((prev) => prev.filter((h) => h.id !== historyId));
+      } catch (err: any) {
+        alert(err.message || 'Erro ao excluir registro.');
+      }
+    } else {
+      setHistory((prev) => prev.filter((h) => h.id !== historyId));
+    }
   };
 
   // Clear all history
-  const handleClearHistory = () => {
-    if (
-      !window.confirm('Deseja realmente limpar todo o histórico de movimentações?')
-    ) {
+  const handleClearHistory = async () => {
+    if (!window.confirm('Deseja realmente limpar todo o histórico de movimentações?')) {
       return;
     }
-    setHistory([]);
+    if (dbStatus?.connected) {
+      try {
+        await api.clearHistory();
+        setHistory([]);
+      } catch (err: any) {
+        alert(err.message || 'Erro ao limpar histórico.');
+      }
+    } else {
+      setHistory([]);
+    }
   };
 
   // Add New Category
-  const handleAddCategory = (newCat: string) => {
+  const handleAddCategory = async (newCat: string) => {
     const trimmed = newCat.trim();
     if (!trimmed) return;
     if (categories.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
       alert('Esta categoria já existe!');
       return;
     }
-    setCategories((prev) => [...prev, trimmed]);
-    setSelectedCategory(trimmed);
-    setIsCategoryModalOpen(false);
+
+    if (dbStatus?.connected) {
+      try {
+        await api.addCategory(trimmed);
+        setCategories((prev) => [...prev, trimmed]);
+        setSelectedCategory(trimmed);
+        setIsCategoryModalOpen(false);
+      } catch (err: any) {
+        alert(err.message || 'Erro ao adicionar categoria.');
+      }
+    } else {
+      setCategories((prev) => [...prev, trimmed]);
+      setSelectedCategory(trimmed);
+      setIsCategoryModalOpen(false);
+    }
+  };
+
+  const handleInitDbManual = async () => {
+    await api.initDb();
+    await loadAppData();
+  };
+
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
+  };
+
+  const handleLogout = () => {
+    authService.logout();
+    setCurrentUser(null);
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-base-200/40 text-base-content antialiased">
       {/* Top Header */}
-      <Header operatorName={operatorName} />
+      <Header
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        dbStatus={dbStatus}
+        onOpenDbSettings={() => setIsDbSettingsOpen(true)}
+      />
+
+      {/* Login Form Overlay if not logged in */}
+      {!currentUser && (
+        <LoginForm onLogin={handleLogin} />
+      )}
 
       {/* Main Content Dashboard */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex-1 space-y-6">
+        {isLoadingData && (
+          <div className="alert alert-info shadow-xs flex items-center justify-between text-xs py-2">
+            <span className="flex items-center gap-2">
+              <span className="loading loading-spinner loading-xs" />
+              Sincronizando estoque ao vivo com Supabase Realtime...
+            </span>
+          </div>
+        )}
+
         {/* KPI / Summary Cards */}
         <StatsCards
           items={items}
@@ -328,15 +398,13 @@ function App() {
         <FilterBar
           categories={categories}
           selectedCategory={selectedCategory}
-          onSelectCategory={(cat) => {
-            setSelectedCategory(cat);
-          }}
+          onSelectCategory={(cat) => setSelectedCategory(cat)}
           searchTerm={searchTerm}
           onSearchChange={(term) => setSearchTerm(term)}
           onOpenNewItemModal={() => setIsItemModalOpen(true)}
           onOpenNewCategoryModal={() => setIsCategoryModalOpen(true)}
           onUndo={handleUndo}
-          canUndo={undoStack.length > 0}
+          canUndo={canUndo}
         />
 
         {/* Inventory Items Table */}
@@ -391,6 +459,15 @@ function App() {
         onClose={() => setIsCategoryModalOpen(false)}
         onAddCategory={handleAddCategory}
         existingCategories={categories}
+      />
+
+      {/* Supabase Realtime Database Settings Modal */}
+      <DbSettingsModal
+        isOpen={isDbSettingsOpen}
+        onClose={() => setIsDbSettingsOpen(false)}
+        dbStatus={dbStatus}
+        onRefreshStatus={loadAppData}
+        onInitDb={handleInitDbManual}
       />
     </div>
   );

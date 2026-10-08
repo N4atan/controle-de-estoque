@@ -1,6 +1,59 @@
-import type { StockItem, HistoryEntry } from '../types/stock';
+import pkg from 'pg';
+const { Pool } = pkg;
+import dotenv from 'dotenv';
 
-export const CATEGORIES = [
+dotenv.config();
+
+export function getConnectionString(): string | null {
+  return process.env.DATABASE_URL || process.env.VITE_DATABASE_URL || null;
+}
+
+let poolInstance: InstanceType<typeof Pool> | null = null;
+
+export function getPool() {
+  const connectionString = getConnectionString();
+  if (!connectionString) {
+    throw new Error('DATABASE_URL não configurada no ambiente.');
+  }
+
+  if (!poolInstance) {
+    poolInstance = new Pool({
+      connectionString,
+      ssl: {
+        rejectUnauthorized: false,
+      },
+    });
+  }
+  return poolInstance;
+}
+
+export async function checkConnection(): Promise<{ connected: boolean; message: string; dbName?: string }> {
+  const connectionString = getConnectionString();
+  if (!connectionString) {
+    return {
+      connected: false,
+      message: 'DATABASE_URL não configurada. Configure o .env ou a variável de ambiente no Neon/Vercel.',
+    };
+  }
+
+  try {
+    const pool = getPool();
+    const result = await pool.query('SELECT current_database(), current_user, version()');
+    const dbName = result.rows[0]?.current_database || 'neondb';
+    return {
+      connected: true,
+      message: `Conectado com sucesso ao PostgreSQL (Neon) - Banco: ${dbName}`,
+      dbName,
+    };
+  } catch (error: any) {
+    return {
+      connected: false,
+      message: `Erro ao conectar ao Neon PostgreSQL: ${error?.message || String(error)}`,
+    };
+  }
+}
+
+export const DEFAULT_CATEGORIES = [
   'Limpeza, Higiene e Manutenção',
   'Velas (Estoque Mensal)',
   'Itens para Trabalho',
@@ -9,7 +62,7 @@ export const CATEGORIES = [
   'Geral'
 ];
 
-export const INITIAL_STOCK: StockItem[] = [
+export const INITIAL_ITEMS = [
   // --- Limpeza, higiene e manutenção ---
   { id: 'ITEM-001', name: 'Água sanitária 5L', type: 'Limpeza, Higiene e Manutenção', quantity: 5, date: '2026-03-01' },
   { id: 'ITEM-002', name: 'Cera incolor (und)', type: 'Limpeza, Higiene e Manutenção', quantity: 2, date: '2026-03-01' },
@@ -91,14 +144,75 @@ export const INITIAL_STOCK: StockItem[] = [
   { id: 'ITEM-074', name: 'Chaves (unidades)', type: 'Itens para Trabalho', quantity: 7, date: '2026-03-01' },
 ];
 
-export const INITIAL_HISTORY: HistoryEntry[] = [
-  {
-    id: 'h-1',
-    datetime: '08/03/2026 12:00',
-    dateRaw: '2026-03-08',
-    type: 'CADASTRAR',
-    name: 'Carga Inicial do Estoque Real',
-    qty: 74,
-    user: 'Responsável',
-  },
-];
+export async function initDb() {
+  const pool = getPool();
+
+  // Create Categories Table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS categories (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) UNIQUE NOT NULL,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Create Items Table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS items (
+      id VARCHAR(50) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      type VARCHAR(100) NOT NULL,
+      quantity INT NOT NULL DEFAULT 0,
+      date VARCHAR(20) NOT NULL,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Create History Table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS history (
+      id VARCHAR(100) PRIMARY KEY,
+      datetime VARCHAR(50) NOT NULL,
+      date_raw VARCHAR(20) NOT NULL,
+      type VARCHAR(20) NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      qty INT NOT NULL,
+      user_name VARCHAR(100) NOT NULL,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Create Undo Actions Table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS undo_actions (
+      id SERIAL PRIMARY KEY,
+      action_type VARCHAR(50) NOT NULL,
+      action_data JSONB NOT NULL,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Check if categories table is empty and seed
+  const existingCat = await pool.query('SELECT COUNT(*)::int as count FROM categories');
+  if (existingCat.rows[0]?.count === 0) {
+    for (const cat of DEFAULT_CATEGORIES) {
+      await pool.query('INSERT INTO categories (name) VALUES ($1) ON CONFLICT DO NOTHING', [cat]);
+    }
+  }
+
+  // Check if items table is empty and seed
+  const existingItems = await pool.query('SELECT COUNT(*)::int as count FROM items');
+  if (existingItems.rows[0]?.count === 0) {
+    for (const item of INITIAL_ITEMS) {
+      await pool.query(
+        `INSERT INTO items (id, name, type, quantity, date)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (id) DO NOTHING`,
+        [item.id, item.name, item.type, item.quantity, item.date]
+      );
+    }
+  }
+
+  return { success: true, message: 'Banco de dados inicializado e migrado com sucesso!' };
+}
