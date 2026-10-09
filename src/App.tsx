@@ -81,6 +81,42 @@ function App() {
     loadAppData();
   }, [loadAppData]);
 
+  // Supabase Auth Session & State Listener
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data?.session?.user) {
+        const sbUser = data.session.user;
+        const user: User = {
+          id: sbUser.id,
+          email: sbUser.email || '',
+          name: sbUser.user_metadata?.name || sbUser.email?.split('@')[0] || 'Operador',
+        };
+        setCurrentUser(user);
+        authService.setCurrentUser(user);
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        const sbUser = session.user;
+        const user: User = {
+          id: sbUser.id,
+          email: sbUser.email || '',
+          name: sbUser.user_metadata?.name || sbUser.email?.split('@')[0] || 'Operador',
+        };
+        setCurrentUser(user);
+        authService.setCurrentUser(user);
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+        localStorage.removeItem('terreira_estoque_user');
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
   // ⚡ Supabase Realtime Subscription Listener ⚡
   useEffect(() => {
     if (!dbStatus?.connected) return;
@@ -394,20 +430,7 @@ function App() {
           isSearching={searchTerm !== '' || selectedCategory !== ''}
         />
 
-        {/* Action & Filter Bar */}
-        <FilterBar
-          categories={categories}
-          selectedCategory={selectedCategory}
-          onSelectCategory={(cat) => setSelectedCategory(cat)}
-          searchTerm={searchTerm}
-          onSearchChange={(term) => setSearchTerm(term)}
-          onOpenNewItemModal={() => setIsItemModalOpen(true)}
-          onOpenNewCategoryModal={() => setIsCategoryModalOpen(true)}
-          onUndo={handleUndo}
-          canUndo={canUndo}
-        />
-
-        {/* Inventory Items Table */}
+        {/* Inventory Items Table com FilterBar interno */}
         <InventoryTable
           items={filteredItems}
           totalItems={items.length}
@@ -416,6 +439,19 @@ function App() {
             setIsMovementModalOpen(true);
           }}
           onDeleteItem={handleDeleteItem}
+          filterBar={
+            <FilterBar
+              categories={categories}
+              selectedCategory={selectedCategory}
+              onSelectCategory={(cat) => setSelectedCategory(cat)}
+              searchTerm={searchTerm}
+              onSearchChange={(term) => setSearchTerm(term)}
+              onOpenNewItemModal={() => setIsItemModalOpen(true)}
+              onOpenNewCategoryModal={() => setIsCategoryModalOpen(true)}
+              onUndo={handleUndo}
+              canUndo={canUndo}
+            />
+          }
         />
 
         {/* History Log Section */}

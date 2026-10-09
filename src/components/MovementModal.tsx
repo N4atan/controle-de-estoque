@@ -46,16 +46,17 @@ export const MovementModal: React.FC<MovementModalProps> = ({
     <div className="modal modal-open z-50 no-print">
       <div className="modal-box max-w-sm bg-base-100 p-0 overflow-hidden shadow-2xl border border-base-200">
         {/* Header */}
-        <div className="bg-primary text-primary-content px-6 py-4 flex justify-between items-center">
+        <div className="text-base-content px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <ArrowUpDown className="w-5 h-5 text-primary-content" />
-            <h3 className="font-bold text-base text-primary-content">
+            <ArrowUpDown className="w-5 h-5 text-base-content" />
+            <h3 className="font-bold text-base text-base-content">
               Movimentar Estoque
             </h3>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="btn btn-ghost btn-sm btn-circle text-primary-content hover:bg-primary-focus/20"
+            className="btn btn-ghost btn-sm btn-circle text-base-content hover:bg-base-200"
           >
             <X className="w-5 h-5" />
           </button>

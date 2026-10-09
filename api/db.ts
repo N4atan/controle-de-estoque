@@ -32,23 +32,23 @@ export async function checkConnection(): Promise<{ connected: boolean; message: 
   if (!connectionString) {
     return {
       connected: false,
-      message: 'DATABASE_URL não configurada. Configure o .env ou a variável de ambiente no Neon/Vercel.',
+      message: 'DATABASE_URL não configurada. Configure o .env ou a variável de ambiente no Supabase/Vercel.',
     };
   }
 
   try {
     const pool = getPool();
     const result = await pool.query('SELECT current_database(), current_user, version()');
-    const dbName = result.rows[0]?.current_database || 'neondb';
+    const dbName = result.rows[0]?.current_database || 'postgres';
     return {
       connected: true,
-      message: `Conectado com sucesso ao PostgreSQL (Neon) - Banco: ${dbName}`,
+      message: `Conectado com sucesso ao PostgreSQL - Banco: ${dbName}`,
       dbName,
     };
   } catch (error: any) {
     return {
       connected: false,
-      message: `Erro ao conectar ao Neon PostgreSQL: ${error?.message || String(error)}`,
+      message: `Erro ao conectar ao PostgreSQL: ${error?.message || String(error)}`,
     };
   }
 }

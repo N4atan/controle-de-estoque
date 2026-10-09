@@ -33,34 +33,25 @@ export const authService = {
     localStorage.removeItem(AUTH_KEY);
   },
 
-  // 1. Direct Operator Login (No password required for internal shared operators)
-  async loginOperator(email: string, name: string): Promise<User> {
-    const user: User = {
-      id: `u-${Date.now()}`,
-      email: email.trim().toLowerCase(),
-      name: name.trim() || email.split('@')[0],
-    };
-    this.setCurrentUser(user);
-    return user;
-  },
-
-  // 2. Official Supabase Auth Sign In (Email + Password)
-  async signInWithSupabase(email: string, password: string, operatorName?: string): Promise<User> {
+  // Supabase Auth Sign In (Email + Password)
+  async signInWithSupabase(email: string, password: string): Promise<User> {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
     });
 
     if (error) {
-      // If user doesn't exist, try auto-signup on Supabase
       if (error.message.includes('Invalid login credentials')) {
-        return this.signUpWithSupabase(email, password, operatorName || email.split('@')[0]);
+        throw new Error('E-mail ou senha incorretos. Verifique suas credenciais ou crie uma conta.');
+      }
+      if (error.message.includes('Email not confirmed')) {
+        throw new Error('E-mail ainda não confirmado. Verifique sua caixa de entrada.');
       }
       throw new Error(error.message);
     }
 
     const sbUser = data.user;
-    const name = sbUser?.user_metadata?.name || operatorName || email.split('@')[0];
+    const name = sbUser?.user_metadata?.name || sbUser?.email?.split('@')[0] || 'Operador';
 
     const user: User = {
       id: sbUser?.id || `u-${Date.now()}`,
@@ -72,22 +63,26 @@ export const authService = {
     return user;
   },
 
-  // 3. Official Supabase Auth Sign Up
-  async signUpWithSupabase(email: string, password: string, name: string): Promise<User> {
+  // Supabase Auth Sign Up
+  async signUpWithSupabase(email: string, password: string, name?: string): Promise<User> {
+    const cleanEmail = email.trim().toLowerCase();
+    const displayName = name?.trim() || cleanEmail.split('@')[0];
+
     const { data, error } = await supabase.auth.signUp({
-      email: email.trim().toLowerCase(),
+      email: cleanEmail,
       password,
       options: {
-        data: { name },
+        data: { name: displayName },
       },
     });
 
     if (error) throw new Error(error.message);
 
+    const sbUser = data.user;
     const user: User = {
-      id: data.user?.id || `u-${Date.now()}`,
-      email: data.user?.email || email,
-      name,
+      id: sbUser?.id || `u-${Date.now()}`,
+      email: sbUser?.email || cleanEmail,
+      name: displayName,
     };
 
     this.setCurrentUser(user);

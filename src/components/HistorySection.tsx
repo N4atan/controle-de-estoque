@@ -36,7 +36,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-5 py-4 bg-base-200/50 hover:bg-base-200 text-left flex justify-between items-center transition-colors no-print"
+        className="w-full px-5 py-4 bg-base-100 hover:bg-base-100 text-left flex justify-between items-center transition-colors no-print"
       >
         <div className="flex items-center gap-2">
           <History className="w-4 h-4 text-primary" />
@@ -48,14 +48,14 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="badge badge-neutral badge-sm font-semibold">
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="badge badge-neutral badge-sm font-semibold whitespace-nowrap h-auto py-1 px-2.5 text-xs">
             {history.length} registros
           </span>
           {isOpen ? (
-            <ChevronUp className="w-4 h-4 text-base-content/60" />
+            <ChevronUp className="w-4 h-4 text-base-content/60 shrink-0" />
           ) : (
-            <ChevronDown className="w-4 h-4 text-base-content/60" />
+            <ChevronDown className="w-4 h-4 text-base-content/60 shrink-0" />
           )}
         </div>
       </button>

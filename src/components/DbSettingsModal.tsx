@@ -116,17 +116,7 @@ export const DbSettingsModal: React.FC<DbSettingsModalProps> = ({
             )}
           </div>
 
-          {/* Setup Guide */}
-          <div className="space-y-3 pt-2 border-t border-base-200">
-            <h4 className="font-semibold text-xs uppercase tracking-wider text-base-content/70">Sincronização em Tempo Real</h4>
-            <p className="text-xs text-base-content/80">
-              O **Supabase Realtime** mantém a tela de todos os computadores, celulares e tablets da terreira **sincronizados instantaneamente**. Cada alteração de estoque é transmitida ao vivo via WebSockets.
-            </p>
-            <div className="p-3 bg-base-200/80 rounded-xl space-y-1 text-xs">
-              <p className="font-semibold text-base-content">Projeto Supabase:</p>
-              <p className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400 break-all">{dbStatus?.url || 'bhhwlujelzccrwcjxwjy.supabase.co'}</p>
-            </div>
-          </div>
+          
         </div>
 
         {/* Modal Footer */}

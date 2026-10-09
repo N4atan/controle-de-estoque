@@ -1,5 +1,5 @@
 import React from 'react';
-import { Flame, Database, UserCheck, RefreshCw, Zap } from 'lucide-react';
+import { Flame, Database, UserCheck, RefreshCw, Zap, Warehouse } from 'lucide-react';
 import type { SupabaseStatusResponse } from '../services/api';
 import type { User as UserType } from '../services/auth';
 
@@ -31,38 +31,19 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="flex-1 flex items-center gap-3">
         <div className="avatar placeholder">
           <div className="bg-primary text-primary-content rounded-xl w-10 h-10 shadow-sm flex items-center justify-center">
-            <Flame className="w-5 h-5 text-white" />
+            <Warehouse className="w-5 h-5 text-white" />
           </div>
         </div>
         <div>
           <h1 className="text-base sm:text-lg font-bold tracking-tight text-base-content leading-none">
             Controle de Estoque da Terreira
           </h1>
-          {currentUser && (
-            <p className="text-[11px] text-base-content/60 font-medium flex items-center gap-1 mt-0.5">
-              <UserCheck className="w-3 h-3 text-emerald-500" /> Operador: <strong className="text-base-content">{displayName}</strong>
-            </p>
-          )}
+          
         </div>
       </div>
 
       <div className="flex items-center gap-3">
-        {/* Supabase Realtime Database Status Badge */}
-        <button
-          onClick={onOpenDbSettings}
-          className={`btn btn-xs sm:btn-sm gap-1.5 rounded-lg border font-medium transition-all ${
-            dbStatus?.connected
-              ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20'
-              : 'bg-amber-500/10 text-amber-600 border-amber-500/30 hover:bg-amber-500/20'
-          }`}
-          title="Clique para ver o status da conexão Supabase Realtime"
-        >
-          <Zap className={`w-3.5 h-3.5 ${dbStatus?.connected ? 'text-emerald-500 fill-emerald-500' : 'text-amber-500'}`} />
-          <span className="hidden sm:inline">
-            {dbStatus?.connected ? 'Supabase Realtime' : 'Supabase Offline'}
-          </span>
-          <span className={`w-2 h-2 rounded-full ${dbStatus?.connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-        </button>
+        
 
         {/* User Profile Avatar Dropdown */}
         <div className="dropdown dropdown-end">
@@ -95,7 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
               className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-100 rounded-lg transition-colors font-medium text-left cursor-pointer"
             >
               <Database className="w-4 h-4 text-emerald-600" />
-              <span>Configurar Neon PostgreSQL</span>
+              <span>Configurar Banco Supabase</span>
             </button>
 
             {/* Alternar Operador / Logout */}
@@ -112,4 +93,4 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
     </header>
   );
-};
+};
