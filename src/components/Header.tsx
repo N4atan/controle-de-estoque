@@ -1,5 +1,5 @@
 import React from 'react';
-import { Flame, Database, UserCheck, RefreshCw, Zap, Warehouse } from 'lucide-react';
+import { Database, RefreshCw, Warehouse } from 'lucide-react';
 import type { SupabaseStatusResponse } from '../services/api';
 import type { User as UserType } from '../services/auth';
 
@@ -13,7 +13,6 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   currentUser,
   onLogout,
-  dbStatus,
   onOpenDbSettings,
 }) => {
   const displayEmail = currentUser?.email || 'operador@terreira.com';
