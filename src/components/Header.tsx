@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, RefreshCw, Warehouse } from 'lucide-react';
+import { Database, RefreshCw } from 'lucide-react';
 import type { SupabaseStatusResponse } from '../services/api';
 import type { User as UserType } from '../services/auth';
 

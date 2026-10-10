@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, LogIn, KeyRound, User, Warehouse, UserPlus, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Mail, LogIn, KeyRound, User, UserPlus, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { authService, type User as UserType } from '../services/auth';
 
 interface LoginFormProps {
