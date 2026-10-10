@@ -54,11 +54,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
       <div className="bg-base-100 border border-base-300 rounded-3xl shadow-2xl max-w-md w-full overflow-hidden">
         {/* Header Banner */}
         <div className="border-b border-base-300 px-6 py-7 text-center relative overflow-hidden bg-base-200/30">
-          <div className="w-12 h-12 bg-primary/10 rounded-2xl mx-auto flex items-center justify-center mb-2 shadow-inner border border-primary/20">
-            <Warehouse className="w-7 h-7 text-primary" />
+          <div className="avatar">
+            <div className="h-32">
+              <img alt="Tailwind-CSS-Avatar-component" src="/logo3.svg" />
+            </div>
           </div>
           <h2 className="text-xl font-extrabold tracking-tight text-base-content">
-            Controle de Estoque da Terreira
+            Terreiro de Umbanda <br/> Casa de Ogum e Oxum
           </h2>
           <p className="text-xs text-base-content/60 mt-1 font-medium">
             Autenticação segura via Supabase

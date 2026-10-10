@@ -465,7 +465,7 @@ function App() {
       {/* Footer */}
       <footer className="footer sm:footer-horizontal bg-base-100 text-base-content/70 border-t border-base-200 p-4 text-center justify-center no-print mt-8">
         <p className="text-xs">
-          Controle de Estoque da Terreira &copy; {new Date().getFullYear()} — Sistema Integrado de Gestão de Suprimentos
+          Sistema para Controle de Estoque da Terreiro de Umbanda Casa de Ogum e Oxum &copy; {new Date().getFullYear()} 
         </p>
       </footer>
 

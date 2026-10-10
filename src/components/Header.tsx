@@ -28,21 +28,21 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="navbar bg-base-100/90 backdrop-blur-md border-b border-base-300 sticky top-0 z-50 px-4 sm:px-6 lg:px-8 transition-all shadow-xs no-print flex items-center justify-between">
       <div className="flex-1 flex items-center gap-3">
-        <div className="avatar placeholder">
-          <div className="bg-primary text-primary-content rounded-xl w-10 h-10 shadow-sm flex items-center justify-center">
-            <Warehouse className="w-5 h-5 text-white" />
+        <div className="avatar">
+          <div className="h-14 rounded">
+            <img alt="Tailwind-CSS-Avatar-component" src="/logo3.svg" />
           </div>
         </div>
         <div>
           <h1 className="text-base sm:text-lg font-bold tracking-tight text-base-content leading-none">
-            Controle de Estoque da Terreira
+            Terreiro de Umbanda <br/> Casa de Ogum e Oxum
           </h1>
-          
+
         </div>
       </div>
 
       <div className="flex items-center gap-3">
-        
+
 
         {/* User Profile Avatar Dropdown */}
         <div className="dropdown dropdown-end">
