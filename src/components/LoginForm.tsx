@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { Mail, LogIn, KeyRound, User, UserPlus, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Mail, LogIn, KeyRound, User, UserPlus, AlertCircle, CheckCircle2, QrCode } from 'lucide-react';
 import { authService, type User as UserType } from '../services/auth';
 
 interface LoginFormProps {
   onLogin: (user: UserType) => void;
+  pendingNotice?: string | null;
 }
 
-export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
+export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, pendingNotice }) => {
   const [isSignUp, setIsSignUp] = useState<boolean>(false);
   const [name, setName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
@@ -69,6 +70,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {pendingNotice && (
+            <div className="p-3 bg-primary/10 text-primary rounded-xl text-xs font-semibold border border-primary/20 flex items-center gap-2">
+              <QrCode className="w-4 h-4 shrink-0" />
+              <span>{pendingNotice}</span>
+            </div>
+          )}
+
           {errorMsg && (
             <div className="p-3 bg-rose-500/10 text-rose-600 rounded-xl text-xs font-medium border border-rose-500/20 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />

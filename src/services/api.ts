@@ -100,7 +100,7 @@ export const api = {
   },
 
   // 5. Movements (Entrada / Saída)
-  async moveStock(itemId: string, movType: 'ENTRADA' | 'SAIDA', qty: number, user?: string): Promise<{ success: boolean; itemId: string; newQuantity: number }> {
+  async moveStock(itemId: string, movType: 'ENTRADA' | 'SAIDA', qty: number, user?: string): Promise<{ success: boolean; itemId: string; newQuantity: number; newDate: string }> {
     const { data: item, error: fetchErr } = await supabase.from('items').select('*').eq('id', itemId).single();
     if (fetchErr || !item) throw new Error('Item não encontrado no Supabase');
 
@@ -111,14 +111,6 @@ export const api = {
 
     const newQty = movType === 'ENTRADA' ? item.quantity + numQty : item.quantity - numQty;
 
-    const { error: updateErr } = await supabase
-      .from('items')
-      .update({ quantity: newQty, updated_at: new Date().toISOString() })
-      .eq('id', itemId);
-
-    if (updateErr) throw new Error(updateErr.message);
-
-    // History Record
     const now = new Date();
     const datetime = `${String(now.getDate()).padStart(2, '0')}/${String(
       now.getMonth() + 1
@@ -129,6 +121,15 @@ export const api = {
     const dateRaw = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
       now.getDate()
     ).padStart(2, '0')}`;
+
+    const { error: updateErr } = await supabase
+      .from('items')
+      .update({ quantity: newQty, date: dateRaw, updated_at: new Date().toISOString() })
+      .eq('id', itemId);
+
+    if (updateErr) throw new Error(updateErr.message);
+
+    // History Record
     const historyId = `h-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const operatorName = user || 'Responsável';
 
@@ -148,7 +149,7 @@ export const api = {
       action_data: { itemId, movType, qty: numQty },
     }]);
 
-    return { success: true, itemId, newQuantity: newQty };
+    return { success: true, itemId, newQuantity: newQty, newDate: dateRaw };
   },
 
   // 6. History Logs

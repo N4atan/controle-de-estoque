@@ -9,6 +9,8 @@ import { MovementModal } from './components/MovementModal';
 import { CategoryModal } from './components/CategoryModal';
 import { DbSettingsModal } from './components/DbSettingsModal';
 import { LoginForm } from './components/LoginForm';
+import { QrCodeModal } from './components/QrCodeModal';
+import { BatchQrCodeModal } from './components/BatchQrCodeModal';
 
 import type { StockItem, HistoryEntry } from './types/stock';
 import { INITIAL_STOCK, INITIAL_HISTORY, CATEGORIES } from './data/initialData';
@@ -40,6 +42,18 @@ function App() {
   const [isMovementModalOpen, setIsMovementModalOpen] = useState<boolean>(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState<boolean>(false);
   const [selectedItemForMovement, setSelectedItemForMovement] = useState<StockItem | null>(null);
+
+  // QR Code Modal & URL Parameter Detection (?move=ITEM_ID)
+  const [selectedItemForQr, setSelectedItemForQr] = useState<StockItem | null>(null);
+  const [isQrModalOpen, setIsQrModalOpen] = useState<boolean>(false);
+  const [isBatchQrModalOpen, setIsBatchQrModalOpen] = useState<boolean>(false);
+  const [pendingMoveItemId, setPendingMoveItemId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('move');
+    }
+    return null;
+  });
 
   // Check Database Status & Fetch Data
   const loadAppData = useCallback(async () => {
@@ -152,6 +166,28 @@ function App() {
     }
   }, [categories, items, history, dbStatus]);
 
+  // 📱 Detecta QR Code (?move=ID) e abre automaticamente a movimentação do item
+  useEffect(() => {
+    if (!pendingMoveItemId || !currentUser || items.length === 0) return;
+
+    const targetItem = items.find(
+      (i) =>
+        i.id.toLowerCase() === pendingMoveItemId.toLowerCase() ||
+        i.name.toLowerCase() === pendingMoveItemId.toLowerCase()
+    );
+
+    if (targetItem) {
+      setSelectedItemForMovement(targetItem);
+      setIsMovementModalOpen(true);
+      setPendingMoveItemId(null);
+
+      // Limpa o parâmetro da URL sem recarregar a página
+      const url = new URL(window.location.href);
+      url.searchParams.delete('move');
+      window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+    }
+  }, [pendingMoveItemId, currentUser, items]);
+
   // Filtered items logic
   const filteredItems = items.filter((item) => {
     const sTerm = searchTerm.toLowerCase().trim();
@@ -238,7 +274,11 @@ function App() {
       try {
         const result = await api.moveStock(itemId, movType, qty, operatorName);
         setItems((prev) =>
-          prev.map((i) => (i.id === itemId ? { ...i, quantity: result.newQuantity } : i))
+          prev.map((i) =>
+            i.id === itemId
+              ? { ...i, quantity: result.newQuantity, date: result.newDate || i.date }
+              : i
+          )
         );
         const updatedHistory = await api.getHistory();
         setHistory(updatedHistory);
@@ -248,16 +288,6 @@ function App() {
         alert(err.message || 'Erro ao registrar movimentação.');
       }
     } else {
-      setItems((prev) =>
-        prev.map((i) => {
-          if (i.id === itemId) {
-            const newQty = movType === 'ENTRADA' ? i.quantity + qty : i.quantity - qty;
-            return { ...i, quantity: newQty };
-          }
-          return i;
-        })
-      );
-
       const now = new Date();
       const datetime = `${String(now.getDate()).padStart(2, '0')}/${String(
         now.getMonth() + 1
@@ -267,6 +297,16 @@ function App() {
       const dateRaw = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
         now.getDate()
       ).padStart(2, '0')}`;
+
+      setItems((prev) =>
+        prev.map((i) => {
+          if (i.id === itemId) {
+            const newQty = movType === 'ENTRADA' ? i.quantity + qty : i.quantity - qty;
+            return { ...i, quantity: newQty, date: dateRaw };
+          }
+          return i;
+        })
+      );
 
       const newHistoryEntry: HistoryEntry = {
         id: `h-${Date.now()}`,
@@ -409,7 +449,14 @@ function App() {
 
       {/* Login Form Overlay if not logged in */}
       {!currentUser && (
-        <LoginForm onLogin={handleLogin} />
+        <LoginForm
+          onLogin={handleLogin}
+          pendingNotice={
+            pendingMoveItemId
+              ? `QR Code do item (${pendingMoveItemId}) detectado. Faça login para registrar a movimentação!`
+              : null
+          }
+        />
       )}
 
       {/* Main Content Dashboard */}
@@ -434,11 +481,17 @@ function App() {
         <InventoryTable
           items={filteredItems}
           totalItems={items.length}
+          history={history}
           onOpenMovement={(item) => {
             setSelectedItemForMovement(item);
             setIsMovementModalOpen(true);
           }}
           onDeleteItem={handleDeleteItem}
+          onOpenQrCode={(item) => {
+            setSelectedItemForQr(item);
+            setIsQrModalOpen(true);
+          }}
+          onOpenBatchQrCode={() => setIsBatchQrModalOpen(true)}
           filterBar={
             <FilterBar
               categories={categories}
@@ -504,6 +557,23 @@ function App() {
         dbStatus={dbStatus}
         onRefreshStatus={loadAppData}
         onInitDb={handleInitDbManual}
+      />
+
+      {/* QR Code Printable Label Modal (Individual) */}
+      <QrCodeModal
+        item={selectedItemForQr}
+        isOpen={isQrModalOpen}
+        onClose={() => {
+          setIsQrModalOpen(false);
+          setSelectedItemForQr(null);
+        }}
+      />
+
+      {/* Batch QR Code Modal (Lote em 4 colunas para itens filtrados) */}
+      <BatchQrCodeModal
+        items={filteredItems}
+        isOpen={isBatchQrModalOpen}
+        onClose={() => setIsBatchQrModalOpen(false)}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowUpDown, X, ArrowUpRight, ArrowDownRight, AlertCircle } from 'lucide-react';
 import type { StockItem } from '../types/stock';
 
@@ -16,8 +16,17 @@ export const MovementModal: React.FC<MovementModalProps> = ({
   onSubmit,
 }) => {
   const [movType, setMovType] = useState<'ENTRADA' | 'SAIDA'>('ENTRADA');
-  const [qty, setQty] = useState<number>(1);
+  const [qty, setQty] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
+
+  // Reseta o formulário toda vez que o modal abre ou o item selecionado muda
+  useEffect(() => {
+    if (isOpen) {
+      setQty('');
+      setMovType('ENTRADA');
+      setErrorMsg('');
+    }
+  }, [isOpen, item]);
 
   if (!isOpen || !item) return null;
 
@@ -25,8 +34,8 @@ export const MovementModal: React.FC<MovementModalProps> = ({
     e.preventDefault();
     setErrorMsg('');
 
-    const parsedQty = Number(qty);
-    if (!parsedQty || parsedQty <= 0) {
+    const parsedQty = parseInt(qty, 10);
+    if (!qty || isNaN(parsedQty) || parsedQty <= 0) {
       setErrorMsg('Informe uma quantidade válida maior que zero.');
       return;
     }
@@ -37,10 +46,17 @@ export const MovementModal: React.FC<MovementModalProps> = ({
     }
 
     onSubmit(item.id, movType, parsedQty);
-    setQty(1);
+    setQty('');
     setMovType('ENTRADA');
     setErrorMsg('');
   };
+
+  const parsedQty = parseInt(qty, 10);
+  const validQty = !isNaN(parsedQty) && parsedQty > 0 ? parsedQty : 0;
+  const projectedBalance =
+    movType === 'ENTRADA'
+      ? item.quantity + validQty
+      : item.quantity - validQty;
 
   return (
     <div className="modal modal-open z-50 no-print">
@@ -129,10 +145,13 @@ export const MovementModal: React.FC<MovementModalProps> = ({
               required
               value={qty}
               onChange={(e) => {
-                setQty(Math.max(1, parseInt(e.target.value) || 0));
+                const val = e.target.value;
+                if (val === '' || /^\d+$/.test(val)) {
+                  setQty(val);
+                }
                 setErrorMsg('');
               }}
-              placeholder="Ex: 5"
+              placeholder="Digite a quantidade..."
               className="input input-bordered w-full text-sm bg-base-100"
             />
           </div>
@@ -141,10 +160,11 @@ export const MovementModal: React.FC<MovementModalProps> = ({
           <div className="text-xs text-base-content/70 flex justify-between items-center px-1">
             <span>Saldo projetado:</span>
             <span className="font-bold">
-              {movType === 'ENTRADA'
-                ? item.quantity + (Number(qty) || 0)
-                : item.quantity - (Number(qty) || 0)}{' '}
-              un.
+              {validQty > 0 ? (
+                `${projectedBalance} un.`
+              ) : (
+                <span className="text-base-content/50">{item.quantity} un. (sem alteração)</span>
+              )}
             </span>
           </div>
 
